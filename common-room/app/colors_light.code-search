@@ -1,0 +1,34 @@
+# Query: colors.light
+# ContextLines: 1
+
+6 results - 6 files
+
+common-room/app/_layout.tsx:
+  17      flex: 1,
+  18:     backgroundColor: Colors.palette.background,
+  19    },
+
+common-room/app/index.tsx:
+  8    return (
+  9:     <View style={{ flex: 1, backgroundColor: Colors.palette.background }}>
+  10        <PresencePill />
+
+common-room/components/themed-text.tsx:
+   9          {
+  10:           color: Colors.palette.text,
+  11            lineHeight: 22,
+
+common-room/components/ui/collapsible.tsx:
+  23            weight="medium"
+  24:           color={theme === 'light' ? Colors.palette.icon : Colors.dark.icon}
+  25            style={{ transform: [{ rotate: isOpen ? '90deg' : '0deg' }] }}
+
+common-room/constants/theme.ts:
+  15    },
+  16:   colors: Colors.palette,
+  17  };
+
+common-room/hooks/use-theme-color.ts:
+  10    props: { light?: string; dark?: string },
+  11:   colorName: keyof typeof Colors.palette & keyof typeof Colors.dark
+  12  ) {

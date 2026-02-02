@@ -1,0 +1,29 @@
+# Query: THEME.
+# ContextLines: 1
+
+7 results - 2 files
+
+common-room/components/HeatMapBackground.tsx:
+  40    const palette = useMemo(() => {
+  41:     const { deepTeal, seaGlass, duskBlue, amber, nocturne } = Theme.colors;
+  42      const t = dayProgress;
+
+  80      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+  81:       <View style={[StyleSheet.absoluteFill, { backgroundColor: Theme.colors.ivory }]} />
+  82  
+
+  95        {/* quiet-lux veil */}
+  96:       <View style={[StyleSheet.absoluteFill, { backgroundColor: Theme.colors.ivory, opacity: 0.52 }]} />
+  97      </View>
+
+common-room/components/PresencePill.tsx:
+  24      paddingVertical: 10,
+  25:     borderRadius: Theme.radius.pill,
+  26      borderWidth: 1,
+  27:     borderColor: Theme.colors.hairline,
+  28      overflow: "hidden",
+
+  36    text: {
+  37:     ...Theme.type.meta,
+  38:     color: Theme.colors.inkSoft,
+  39    },

@@ -1,13 +1,16 @@
-import { View, Text, StyleSheet } from "react-native";
-import { Colors } from "../constants/colors";
+import React from "react";
+import { View, StyleSheet } from "react-native";
+import HeatMapBackground from "../components/HeatMapBackground";
 
-export default function Index() {
+export default function IndexScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Common Room</Text>
-      <Text style={styles.subtitle}>
-        A quiet place to be together.
-      </Text>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <HeatMapBackground />
+      </View>
+
+      {/* Foreground content goes here */}
+      <View style={styles.content} />
     </View>
   );
 }
@@ -15,19 +18,12 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.light.background,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
+    position: "relative",
+    backgroundColor: "transparent",
+    overflow: "hidden",
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    opacity: 0.6,
-    textAlign: "center",
+  content: {
+    flex: 1,
+    zIndex: 1,
   },
 });
