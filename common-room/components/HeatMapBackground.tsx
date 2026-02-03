@@ -1,218 +1,267 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { View, StyleSheet, Animated, Easing } from "react-native";
-import Svg, { Defs, Rect, LinearGradient, Stop, G } from "react-native-svg";
+// components/HeatMapBackground.tsx
+import React, { useEffect, useMemo, useState } from "react";
+import { View, StyleSheet } from "react-native";
+import Svg, { Defs, Rect, Ellipse, RadialGradient, Stop, G } from "react-native-svg";
 
 const IVORY = "#F6F3EE";
 
-/**
- * Cathedral light overlay (stable + visible)
- * - Numeric viewBox coordinates (consistent on iOS/Android)
- * - Uneven dominance: hero + supports + ghost washes
- * - Multi-stop chroma gradients (stained-glass feel)
- * - Very slow, uneven drift (feels projected, not designed)
- */
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function hexToRgb(hex: string) {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(full, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  const to2 = (x: number) => x.toString(16).padStart(2, "0");
+  return `#${to2(clamp(Math.round(r), 0, 255))}${to2(
+    clamp(Math.round(g), 0, 255)
+  )}${to2(clamp(Math.round(b), 0, 255))}`;
+}
+
+function mixHex(a: string, b: string, t: number) {
+  const A = hexToRgb(a);
+  const B = hexToRgb(b);
+  const tt = clamp(t, 0, 1);
+  return rgbToHex(
+    A.r + (B.r - A.r) * tt,
+    A.g + (B.g - A.g) * tt,
+    A.b + (B.b - A.b) * tt
+  );
+}
+
+function makeRng(seedStart: number) {
+  let seed = seedStart;
+  return () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+}
+
+function getDayProgress01(date: Date) {
+  const seconds =
+    date.getHours() * 3600 +
+    date.getMinutes() * 60 +
+    date.getSeconds() +
+    date.getMilliseconds() / 1000;
+  return seconds / 86400;
+}
+
+function getDriftPalette(p01: number) {
+  const base = {
+    ivory: IVORY,
+    coolA: "#BFD6FF",
+    coolB: "#A9C6FF",
+    coolC: "#B7E1FF",
+    teal: "#9AD9D0",
+    green: "#BDE7C5",
+    amber: "#F2C78B",
+    rose: "#F3B7C3",
+    violet: "#C9B7F6",
+  };
+
+  const nightCurve = Math.sin((p01 + 0.15) * Math.PI * 2) * 0.5 + 0.5;
+  const night = clamp(nightCurve * 0.22, 0, 0.22);
+
+  const warmCurve = Math.sin((p01 - 0.1) * Math.PI * 2) * 0.5 + 0.5;
+  const warm = clamp(warmCurve * 0.12, 0, 0.12);
+
+  const coolTarget = "#B7C7F2";
+  const warmTarget = "#F0D1A8";
+
+  return {
+    ...base,
+    coolA: mixHex(base.coolA, coolTarget, night),
+    coolB: mixHex(base.coolB, coolTarget, night),
+    coolC: mixHex(base.coolC, coolTarget, night),
+    teal: mixHex(base.teal, coolTarget, night * 0.7),
+    green: mixHex(base.green, coolTarget, night * 0.55),
+    violet: mixHex(base.violet, coolTarget, night * 0.85),
+    rose: mixHex(base.rose, warmTarget, warm * 0.6),
+    amber: mixHex(base.amber, warmTarget, warm * 0.9),
+  };
+}
+
+type Field = {
+  key: string;
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  rot: number;
+  opacity: number;
+};
 
 export default function HeatMapBackground() {
-  // Two independent drifts so it doesn’t feel like one “animation”
-  const driftA = useRef(new Animated.Value(0)).current;
-  const driftB = useRef(new Animated.Value(0)).current;
-
+  const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const a = Animated.loop(
-      Animated.sequence([
-        Animated.timing(driftA, {
-          toValue: 1,
-          duration: 120000, // 2 min
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(driftA, {
-          toValue: 0,
-          duration: 120000,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
-    const b = Animated.loop(
-      Animated.sequence([
-        Animated.timing(driftB, {
-          toValue: 1,
-          duration: 180000, // 3 min (different cadence)
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(driftB, {
-          toValue: 0,
-          duration: 180000,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
+  const dayProgress = getDayProgress01(now);
+  const palette = useMemo(() => getDriftPalette(dayProgress), [dayProgress]);
 
-    a.start();
-    b.start();
-    return () => {
-      a.stop();
-      b.stop();
+  const rainbowDrift = useMemo(() => {
+    const phase = dayProgress * Math.PI * 2;
+    return {
+      dx: Math.sin(phase) * 4,
+      dy: Math.cos(phase * 0.85) * 3,
     };
-  }, [driftA, driftB]);
+  }, [dayProgress]);
 
-  const translateA = driftA.interpolate({ inputRange: [0, 1], outputRange: [-10, 10] });
-  const translateB = driftB.interpolate({ inputRange: [0, 1], outputRange: [8, -8] });
+  const fields = useMemo<Field[]>(() => {
+    const rng = makeRng(42);
 
-  const gradients = useMemo(
-    () => [
-      // HERO (wide, luminous, slightly warmer)
+    const specs: Field[] = [
       {
-        id: "gHero",
-        stops: [
-          { o: "0%", c: "#9EC9FF", a: 0.0 },
-          { o: "18%", c: "#BFD7FF", a: 0.34 },
-          { o: "46%", c: "#FFD6B0", a: 0.22 },
-          { o: "70%", c: "#B4F0D6", a: 0.18 },
-          { o: "100%", c: "#9EC9FF", a: 0.0 },
-        ],
+        key: "wallGlow",
+        cx: 64 + rng() * 10,
+        cy: 12 + rng() * 10,
+        rx: 92 + rng() * 18,
+        ry: 74 + rng() * 16,
+        rot: -10 + rng() * 10,
+        opacity: 0.145,
       },
-      // SUPPORT A (sea-glass → pale gold)
       {
-        id: "gA",
-        stops: [
-          { o: "0%", c: "#A8E0C2", a: 0.0 },
-          { o: "36%", c: "#D7F7EA", a: 0.22 },
-          { o: "62%", c: "#FFF1C1", a: 0.18 },
-          { o: "100%", c: "#A8E0C2", a: 0.0 },
-        ],
+        key: "floorGlow",
+        cx: 58 + rng() * 10,
+        cy: 90 + rng() * 10,
+        rx: 98 + rng() * 18,
+        ry: 76 + rng() * 16,
+        rot: 8 + rng() * 10,
+        opacity: 0.125,
       },
-      // SUPPORT B (lavender → cool sky)
       {
-        id: "gB",
-        stops: [
-          { o: "0%", c: "#E6C8FF", a: 0.0 },
-          { o: "42%", c: "#F5DEFF", a: 0.20 },
-          { o: "74%", c: "#CFE4FF", a: 0.16 },
-          { o: "100%", c: "#E6C8FF", a: 0.0 },
-        ],
+        key: "rainbowSweep",
+        cx: 82 + rng() * 12,
+        cy: 54 + rng() * 12,
+        rx: 88 + rng() * 18,
+        ry: 72 + rng() * 18,
+        rot: -18 + rng() * 12,
+        // ✅ stronger so you can actually see it
+        opacity: 0.22,
       },
-      // SUPPORT C (rose → clear → mint)
       {
-        id: "gC",
-        stops: [
-          { o: "0%", c: "#FFC7D6", a: 0.0 },
-          { o: "40%", c: "#FFE2EA", a: 0.16 },
-          { o: "62%", c: "#DDF8EE", a: 0.14 },
-          { o: "100%", c: "#FFC7D6", a: 0.0 },
-        ],
+        key: "cornerLift",
+        cx: 8 + rng() * 10,
+        cy: 10 + rng() * 14,
+        rx: 84 + rng() * 14,
+        ry: 66 + rng() * 16,
+        rot: 22 + rng() * 10,
+        opacity: 0.095,
       },
-      // GHOST WASH (barely-there warmth)
-      {
-        id: "gGhost",
-        stops: [
-          { o: "0%", c: "#FFD6B0", a: 0.0 },
-          { o: "55%", c: "#FFE9D6", a: 0.14 },
-          { o: "100%", c: "#FFD6B0", a: 0.0 },
-        ],
-      },
-      // MICRO-CAUSTICS (thin shimmer band, super subtle)
-      {
-        id: "gCaustic",
-        stops: [
-          { o: "0%", c: "#FFFFFF", a: 0.0 },
-          { o: "45%", c: "#FFFFFF", a: 0.08 },
-          { o: "55%", c: "#FFFFFF", a: 0.08 },
-          { o: "100%", c: "#FFFFFF", a: 0.0 },
-        ],
-      },
-    ],
-    []
-  );
+    ];
+
+    return specs.map((s, i) => {
+      const r1 = rng();
+      const r2 = rng();
+      const r3 = rng();
+      return {
+        ...s,
+        cx: s.cx + (r1 - 0.5) * 6,
+        cy: s.cy + (r2 - 0.5) * 6,
+        rx: s.rx * (0.95 + r3 * 0.1),
+        ry: s.ry * (0.95 + r1 * 0.1),
+        // Allow a slightly higher cap than before
+        opacity: clamp(s.opacity * (0.92 + r2 * 0.16), 0.06, 0.24),
+        key: `${s.key}-${i}`,
+      };
+    });
+  }, []);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* Base ivory (material) */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: IVORY }]} />
+      <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <Defs>
+          <RadialGradient id="gWall" cx="62" cy="18" r="62" gradientUnits="userSpaceOnUse">
+            <Stop offset="0%" stopColor={palette.ivory} stopOpacity="0.46" />
+            <Stop offset="34%" stopColor={palette.coolB} stopOpacity="0.36" />
+            <Stop offset="68%" stopColor={palette.coolA} stopOpacity="0.16" />
+            <Stop offset="100%" stopColor={palette.ivory} stopOpacity="0" />
+          </RadialGradient>
 
-      {/* Drift layer A */}
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFill,
-          { transform: [{ translateX: translateA }, { translateY: translateB }] },
-        ]}
-      >
-        <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <Defs>
-            {gradients.map((g) => (
-              <LinearGradient
-                key={g.id}
-                id={g.id}
-                x1="0"
-                y1="0"
-                x2="100"
-                y2="0"
-                gradientUnits="userSpaceOnUse"
-              >
-                {g.stops.map((s, i) => (
-                  <Stop key={i} offset={s.o} stopColor={s.c} stopOpacity={s.a} />
-                ))}
-              </LinearGradient>
-            ))}
-          </Defs>
+          <RadialGradient id="gFloor" cx="60" cy="82" r="70" gradientUnits="userSpaceOnUse">
+            <Stop offset="0%" stopColor={palette.ivory} stopOpacity="0.42" />
+            <Stop offset="44%" stopColor={palette.teal} stopOpacity="0.32" />
+            <Stop offset="78%" stopColor={palette.coolC} stopOpacity="0.14" />
+            <Stop offset="100%" stopColor={palette.ivory} stopOpacity="0" />
+          </RadialGradient>
 
-          {/* HERO beam (dominant) */}
-          <G opacity={0.18} transform="rotate(-18 50 50)">
-            <Rect x={-55} y={10} width={230} height={20} fill="url(#gHero)" />
-          </G>
+          <RadialGradient id="gRainbow" cx="76" cy="52" r="62" gradientUnits="userSpaceOnUse">
+            {/* keep core restrained so it stays "light" */}
+            <Stop offset="0%" stopColor={palette.coolA} stopOpacity="0.44" />
+            <Stop offset="18%" stopColor={palette.violet} stopOpacity="0.62" />
+            {/* ✅ stronger mid-spectrum */}
+            <Stop offset="36%" stopColor={palette.rose} stopOpacity="0.52" />
+            <Stop offset="54%" stopColor={palette.amber} stopOpacity="0.40" />
+            <Stop offset="72%" stopColor={palette.green} stopOpacity="0.36" />
+            <Stop offset="88%" stopColor={palette.teal} stopOpacity="0.32" />
+            <Stop offset="100%" stopColor={palette.ivory} stopOpacity="0" />
+          </RadialGradient>
 
-          {/* Support beams (uneven widths/angles) */}
-          <G opacity={0.12} transform="rotate(-30 50 50)">
-            <Rect x={-70} y={32} width={260} height={12} fill="url(#gA)" />
-          </G>
+          <RadialGradient id="gLift" cx="10" cy="10" r="62" gradientUnits="userSpaceOnUse">
+            <Stop offset="0%" stopColor={palette.ivory} stopOpacity="0.34" />
+            <Stop offset="55%" stopColor={palette.coolC} stopOpacity="0.14" />
+            <Stop offset="100%" stopColor={palette.ivory} stopOpacity="0" />
+          </RadialGradient>
 
-          <G opacity={0.10} transform="rotate(-9 50 50)">
-            <Rect x={-60} y={54} width={230} height={10} fill="url(#gB)" />
-          </G>
+          {/* subtle cool veil to keep everything airy without whitening it out */}
+          <RadialGradient id="gCoolVeil" cx="55" cy="45" r="85" gradientUnits="userSpaceOnUse">
+            <Stop offset="0%" stopColor={palette.coolC} stopOpacity="0.10" />
+            <Stop offset="100%" stopColor={palette.ivory} stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
 
-          <G opacity={0.085} transform="rotate(-22 50 50)">
-            <Rect x={-80} y={66} width={280} height={9} fill="url(#gC)" />
-          </G>
+        {/* Base */}
+        <Rect x="0" y="0" width="100" height="100" fill={palette.ivory} />
 
-          {/* Ghost warmth wash (barely visible) */}
-          <G opacity={0.06} transform="rotate(-6 50 50)">
-            <Rect x={-90} y={72} width={300} height={18} fill="url(#gGhost)" />
-          </G>
+        <G>
+          <Ellipse
+            cx={fields[0].cx}
+            cy={fields[0].cy}
+            rx={fields[0].rx}
+            ry={fields[0].ry}
+            fill="url(#gWall)"
+            opacity={fields[0].opacity}
+            transform={`rotate(${fields[0].rot} ${fields[0].cx} ${fields[0].cy})`}
+          />
+          <Ellipse
+            cx={fields[1].cx}
+            cy={fields[1].cy}
+            rx={fields[1].rx}
+            ry={fields[1].ry}
+            fill="url(#gFloor)"
+            opacity={fields[1].opacity}
+            transform={`rotate(${fields[1].rot} ${fields[1].cx} ${fields[1].cy})`}
+          />
+          <Ellipse
+            cx={fields[2].cx + rainbowDrift.dx}
+            cy={fields[2].cy + rainbowDrift.dy}
+            rx={fields[2].rx}
+            ry={fields[2].ry}
+            fill="url(#gRainbow)"
+            opacity={fields[2].opacity}
+            transform={`rotate(${fields[2].rot} ${fields[2].cx} ${fields[2].cy})`}
+          />
+          <Ellipse
+            cx={fields[3].cx}
+            cy={fields[3].cy}
+            rx={fields[3].rx}
+            ry={fields[3].ry}
+            fill="url(#gLift)"
+            opacity={fields[3].opacity}
+            transform={`rotate(${fields[3].rot} ${fields[3].cx} ${fields[3].cy})`}
+          />
 
-          {/* Micro-caustics (thin highlight band to break “flatness”) */}
-          <G opacity={0.10} transform="rotate(-18 50 50)">
-            <Rect x={-40} y={26} width={200} height={3} fill="url(#gCaustic)" />
-          </G>
-        </Svg>
-      </Animated.View>
-
-      {/* Drift layer B (slower, different direction — adds “projected” feel) */}
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFill,
-          { transform: [{ translateX: translateB }, { translateY: translateA }] },
-          { opacity: 0.55 },
-        ]}
-      >
-        <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {/* Secondary faint beams */}
-          <G opacity={0.08} transform="rotate(-14 50 50)">
-            <Rect x={-80} y={18} width={280} height={9} fill="url(#gB)" />
-          </G>
-
-          <G opacity={0.07} transform="rotate(-34 50 50)">
-            <Rect x={-95} y={44} width={320} height={8} fill="url(#gA)" />
-          </G>
-
-          <G opacity={0.05} transform="rotate(-4 50 50)">
-            <Rect x={-90} y={60} width={300} height={12} fill="url(#gGhost)" />
-          </G>
-        </Svg>
-      </Animated.View>
+          {/* gentle overall cool air (doesn't erase color like an ivory veil did) */}
+          <Rect x="0" y="0" width="100" height="100" fill="url(#gCoolVeil)" opacity="0.55" />
+        </G>
+      </Svg>
     </View>
   );
 }
